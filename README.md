@@ -42,6 +42,24 @@ OK
 127.0.0.1:8091>
 ```
 
+## MCP server
+
+There's also an MCP server so tools like Claude Code can hit the store
+directly instead of you typing commands by hand.
+
+```
+go run ./cmd/mcp-server -redis-addr localhost:8091
+```
+
+Register it with Claude Code:
+
+```
+claude mcp add redis-clone -- go run /path/to/redis-clone/cmd/mcp-server -redis-addr localhost:8091
+```
+
+Gives you `get`, `set`, `delete`, `keys`, `info` as tools. See
+[cmd/mcp-server/README.md](cmd/mcp-server/README.md) for the full rundown.
+
 ## Commands
 
 `PING`, `ECHO <msg>`, `GET <key>`, `SET <key> <value>`, `EXISTS <key>`,
