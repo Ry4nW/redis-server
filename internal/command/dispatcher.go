@@ -1,6 +1,8 @@
 package command
 
 import (
+	"fmt"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -31,8 +33,7 @@ func getNowMS() int64 {
 	return time.Now().UnixMilli()
 }
 
-// Dispatch encodes the result (or error) to wire-ready RESP bytes, so callers
-// can always write what comes back straight to the socket.
+// Dispatch encodes the result to wire-ready RESP bytes
 func (h *Handlers) Dispatch(req *resp.Request) (string, error) {
 	result, err := h.route(req)
 	if err != nil {
@@ -57,6 +58,10 @@ func (h *Handlers) execute(req *resp.Request) (resp.RespValue, error) {
 		return h.handleDel(req)
 	case "FLUSH":
 		return h.handleFlush(req)
+	case "KEYS":
+		return h.handleKeys(req)
+	case "INFO":
+		return h.handleInfo(req)
 	default:
 		return resp.RespValue{}, ErrUnknownCommand
 	}
@@ -179,4 +184,54 @@ func (h *Handlers) handleFlush(req *resp.Request) (resp.RespValue, error) {
 
 	h.store = Store{}
 	return resp.NewSimpleString("OK"), nil
+}
+
+func (h *Handlers) handleKeys(req *resp.Request) (resp.RespValue, error) {
+	if len(req.Args) > 1 {
+		return resp.RespValue{}, ErrBadArgAmt
+	}
+
+	pattern := "*"
+	if len(req.Args) == 1 {
+		pattern = req.Args[0]
+	}
+
+	// no lazy delete here, so RLock is enough
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	now := getNowMS()
+	matches := make([]resp.RespValue, 0, len(h.store))
+	for key, entry := range h.store {
+		if entry.ExpiresAt != 0 && entry.ExpiresAt <= now {
+			continue
+		}
+
+		ok, err := path.Match(pattern, key)
+		if err != nil {
+			return resp.RespValue{}, ErrBadArgType
+		}
+		if ok {
+			matches = append(matches, resp.NewBulkString(key))
+		}
+	}
+
+	return resp.RespValue{Type: resp.Array, Array: matches}, nil
+}
+
+func (h *Handlers) handleInfo(req *resp.Request) (resp.RespValue, error) {
+	if len(req.Args) != 0 {
+		return resp.RespValue{}, ErrBadArgAmt
+	}
+
+	h.mu.RLock()
+	keyCount := len(h.store)
+	h.mu.RUnlock()
+
+	info := fmt.Sprintf(
+		"# Server\r\nredis_version:redis-clone-0.1\r\nrole:master\r\n# Keyspace\r\ndb0:keys=%d\r\n",
+		keyCount,
+	)
+
+	return resp.NewBulkString(info), nil
 }

@@ -87,6 +87,8 @@ go test ./internal/command -run TestHandleSetGet_RoundTrip -v
   encodes the result. Also holds the store, a map guarded by a mutex.
 - `internal/server` - accepts connections, one goroutine per connection,
   each reading a request, dispatching it, and writing the response back.
+- `cmd/mcp-server` - exposes this server as an MCP server, see its
+  [README](cmd/mcp-server/README.md).
 
 ## TODO 
 1. AOF persistence

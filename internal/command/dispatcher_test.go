@@ -2,6 +2,7 @@ package command
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"redis-clone/internal/resp"
@@ -130,6 +131,70 @@ func TestHandleFlush(t *testing.T) {
 
 	if got := mustDispatch(t, h, &resp.Request{Command: "EXISTS", Args: []string{"foo"}}); got != ":0\r\n" {
 		t.Fatalf("expected store to be empty after FLUSH, got %q", got)
+	}
+}
+
+// --- KEYS ---
+
+func TestHandleKeys_DefaultPatternMatchesAll(t *testing.T) {
+	h := NewHandlers()
+	mustDispatch(t, h, &resp.Request{Command: "SET", Args: []string{"foo", "1"}})
+	mustDispatch(t, h, &resp.Request{Command: "SET", Args: []string{"bar", "2"}})
+
+	got := mustDispatch(t, h, &resp.Request{Command: "KEYS"})
+	if !strings.Contains(got, "foo") || !strings.Contains(got, "bar") {
+		t.Fatalf("expected both keys present, got %q", got)
+	}
+	if want := "*2\r\n"; !strings.HasPrefix(got, want) {
+		t.Fatalf("expected array of 2, got %q", got)
+	}
+}
+
+func TestHandleKeys_GlobPattern(t *testing.T) {
+	h := NewHandlers()
+	mustDispatch(t, h, &resp.Request{Command: "SET", Args: []string{"user:1", "a"}})
+	mustDispatch(t, h, &resp.Request{Command: "SET", Args: []string{"user:2", "b"}})
+	mustDispatch(t, h, &resp.Request{Command: "SET", Args: []string{"other", "c"}})
+
+	got := mustDispatch(t, h, &resp.Request{Command: "KEYS", Args: []string{"user:*"}})
+	if want := "*2\r\n"; !strings.HasPrefix(got, want) {
+		t.Fatalf("expected array of 2, got %q", got)
+	}
+	if strings.Contains(got, "other") {
+		t.Fatalf("expected non-matching key excluded, got %q", got)
+	}
+}
+
+func TestHandleKeys_EmptyStore(t *testing.T) {
+	got := mustDispatch(t, NewHandlers(), &resp.Request{Command: "KEYS"})
+	if want := "*0\r\n"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestHandleKeys_TooManyArgs(t *testing.T) {
+	err := dispatchErr(t, NewHandlers(), &resp.Request{Command: "KEYS", Args: []string{"a", "b"}})
+	if !errors.Is(err, ErrBadArgAmt) {
+		t.Fatalf("expected ErrBadArgAmt, got %v", err)
+	}
+}
+
+// --- INFO ---
+
+func TestHandleInfo_ReportsKeyCount(t *testing.T) {
+	h := NewHandlers()
+	mustDispatch(t, h, &resp.Request{Command: "SET", Args: []string{"foo", "bar"}})
+
+	got := mustDispatch(t, h, &resp.Request{Command: "INFO"})
+	if !strings.Contains(got, "db0:keys=1") {
+		t.Fatalf("expected key count in INFO output, got %q", got)
+	}
+}
+
+func TestHandleInfo_TooManyArgs(t *testing.T) {
+	err := dispatchErr(t, NewHandlers(), &resp.Request{Command: "INFO", Args: []string{"unexpected"}})
+	if !errors.Is(err, ErrBadArgAmt) {
+		t.Fatalf("expected ErrBadArgAmt, got %v", err)
 	}
 }
 

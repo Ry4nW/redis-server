@@ -130,6 +130,10 @@ func doesMutate(cmd string) (bool, error) {
 		return true, nil
 	case "FLUSH":
 		return true, nil
+	case "KEYS":
+		return false, nil
+	case "INFO":
+		return false, nil
 	default:
 		return false, ErrUnknownCommand
 	}
